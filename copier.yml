@@ -1,0 +1,90 @@
+# Copier template configuration
+# See https://github.com/copier-org/copier for syntax details.
+
+_subdirectory: "."
+_templates_suffix: ".jinja"
+_answers_file: ".copier-answers.yml"
+
+project_slug:
+  type: str
+  help: "Repository navn (kebab-case)."
+  default: "{{ _copier_conf.dst_path | basename | lower | replace(' ', '-') }}"
+
+pbip_display_name:
+  type: str
+  help: "Visningsnavn på genererte PBIP filer."
+  default: "{{ project_slug }}"
+
+service_connection_name:
+  type: str
+  help: "Azure DevOps Azure Resource Manager service connection. Brukes bare med auth_mode=azure_cli."
+  default: "<azure_service_connection_name>"
+
+auth_mode:
+  type: str
+  help: "Autentisering i CI: azure_cli (anbefalt, også for workload identity federation), client_secret eller managed_identity."
+  choices:
+    - azure_cli
+    - client_secret
+    - managed_identity
+  default: azure_cli
+
+secret_variable_group_name:
+  type: str
+  help: "Key Vault-linked Azure DevOps variable group for client_secret. La stå som placeholder når auth_mode ikke er client_secret."
+  default: "<key-vault-linked-variable-group>"
+
+agent_image:
+  type: str
+  help: "Microsoft-hosted agent image for deploy-pipelines."
+  choices:
+    - ubuntu-latest
+    - windows-latest
+  default: ubuntu-latest
+
+repository_path_prefix:
+  type: str
+  help: "Valgfri undermappe når prosjektet ligger i et monorepo, for eksempel PBI. Tom verdi for eget repo."
+  default: ""
+
+# Files to exclude - not include in bootstrapped project
+_exclude:
+  - copier.yml
+  - .git
+  - .venv
+  - __pycache__
+  - setup.py
+  - README.md
+  - pipeline.yml
+      
+# Post-generation tasks; create virtual environment with uv and sync pre-installed packages      
+_tasks:
+    - command: ["uv", "venv"] # Create virtual environment
+      when: "{{ _copier_operation == 'copy' }}"
+    - command: ["uv", "sync", "--frozen"] # Install exactly the locked packages
+      when: "{{ _copier_operation in ['copy', 'recopy', 'update'] }}"
+    - command: ["git", "init"] # Initialize a new Git repository
+      when: "{{ _copier_operation == 'copy' }}"
+    - command: ["git", "add", "."] # Stage all files
+      when: "{{ _copier_operation == 'copy' }}"
+    - command: ["git", "commit", "-m", "Initial commit"] # Commit the staged files
+      when: "{{ _copier_operation == 'copy' }}"
+
+_message_after_copy: |
+    
+    Prosjekt "{{ project_slug }}" har blitt opprettet!
+    Neste steg:
+
+    1. Bytt til prosjektmappen:
+        
+        cd {{ project_slug }}
+
+    2. Åpne prosjektet i din IDE (f.eks. VS Code):
+        
+        code .
+
+    3. Fyll inn workspace-IDer i config/config-{{ project_slug }}.yml
+    4. Velg profiler og refresh-policy i config/profiles.yml
+    5. Fyll inn parameter-substitusjoner i config/parameter-{{ project_slug }}.yml
+    6. Push til Azure DevOps og opprett CI-, deploy-dev- og promote-pipelinene.
+    7. Se docs/setup.md for fullstendige oppsettinstruksjoner.

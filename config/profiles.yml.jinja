@@ -1,0 +1,8 @@
+# Explicit deployment manifest. Only enabled profiles are considered by deploy.py.
+# This avoids accidentally deploying every config-*.yml file in a multi-workspace repo.
+profiles:
+  - name: {{ project_slug }}
+    enabled: true
+    config: config-{{ project_slug }}.yml
+    # none: no dataset refresh, trigger: start refresh, wait: fail pipeline on refresh failure.
+    refresh: none

@@ -1,0 +1,20 @@
+find_replace:
+  # Replace Power Query parameter values per environment.
+  # Add one entry per parameter expression in expressions.tmdl.
+  - find_value: expression Database = "([^"]*)" meta
+    is_regex: "true"
+    replace_value:
+      dev: <DEV_VALUE>
+      test: <TEST_VALUE>
+      prod: <PROD_VALUE>
+    file_path: "**/expressions.tmdl"
+
+# Uncomment below to replace live connection strings per environment (report -> semantic model).
+# key_value_replace:
+# - find_key: $.datasetReference.byConnection.connectionString
+#   replace_value:
+#     dev: "Data Source=\"powerbi://api.powerbi.com/v1.0/myorg/<workspace_name>\";initial catalog=\"<model_name>\";access mode=readonly;integrated security=ClaimsToken;semanticmodelid=<model_id>"
+#     test: "Data Source=\"powerbi://api.powerbi.com/v1.0/myorg/<workspace_name>\";initial catalog=\"<model_name>\";access mode=readonly;integrated security=ClaimsToken;semanticmodelid=<model_id>"
+#     prod: "Data Source=\"powerbi://api.powerbi.com/v1.0/myorg/<workspace_name>\";initial catalog=\"<model_name>\";access mode=readonly;integrated security=ClaimsToken;semanticmodelid=<model_id>"
+#   item_type: "Report"
+#   item_name: "<Report Name>"

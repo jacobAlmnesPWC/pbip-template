@@ -1,0 +1,22 @@
+core:
+  # workspace_id is the only authoritative deployment target. Workspace IDs are
+  # normally not secrets and may live in source control; credentials may not.
+  workspace_id:
+    dev: 00000000-0000-0000-0000-000000000000
+    test: 00000000-0000-0000-0000-000000000000
+    prod: 00000000-0000-0000-0000-000000000000
+  repository_directory: ../workspace
+  item_types_in_scope:
+  - SemanticModel
+  - Report
+  parameter: ./parameter-{{ project_slug }}.yml
+unpublish:
+  # Explicit safe default. Omitting this section makes fabric-cicd unpublish
+  # orphaned items by default. Enable cleanup only in a reviewed release.
+  skip:
+    dev: true
+    test: true
+    prod: true
+features:
+  - enable_environment_variable_replacement
+  - enable_items_to_include

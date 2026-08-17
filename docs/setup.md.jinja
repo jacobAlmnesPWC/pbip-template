@@ -1,0 +1,34 @@
+# {{ project_slug }}
+
+Et kildekodebasert Power BI/Fabric-prosjekt for PBIP-rapporter og semantiske modeller. Templaten bruker `fabric-cicd` og deployer kun fra Git.
+
+## Første oppsett
+
+1. Lag DEV, test og prod som separate Fabric-workspaces, og fyll inn kun deres UUID-er i `config/config-{{ project_slug }}.yml`.
+2. Rediger `config/profiles.yml`. Bare profiler med `enabled: true` kan deployes.
+3. Lagre PBIP-artefakter under `workspace/`. Hver profil peker på sin egen `repository_directory`.
+4. Velg autentisering:
+   - `azure_cli` er default. Bruk en Azure DevOps Azure Resource Manager service connection, helst med Workload Identity Federation.
+   - `client_secret` krever en Key Vault-linked variable group som eksponerer `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` og `AZURE_CLIENT_SECRET`.
+   - `managed_identity` brukes bare på en self-hosted agent med riktig managed identity.
+5. Gi deploy-identiteten Contributor i hvert mål-workspace. Begrens tenant-innstillinger for Fabric/Power BI API-er til en dedikert Entra-sikkerhetsgruppe.
+
+Ingen hemmeligheter skal lagres i Copier-svar, YAML-config eller Git. Workspace-ID-er er normalt ikke hemmeligheter, men verifiser lokal policy.
+
+## Lokalt
+
+```powershell
+uv sync --frozen
+az login
+uv run python src/deploy.py --env dev --whatif
+```
+
+`--whatif` kjører config-/parameterbehandling uten publish eller unpublish. En deploy uten eksplisitt `--git-compare-ref` er med hensikt en full profil-deploy.
+
+## PBIP
+
+Lagre PBIX som `.pbip` under riktig `workspace/`-mappe. Bruk PBIR/enhanced metadata i Power BI Desktop for lesbare Git-differ.
+
+## Sletting
+
+`unpublish.skip` er eksplisitt satt til `true` i alle miljøer. En artefakt som er fjernet fra Git slettes derfor ikke i Fabric. Slå bare av denne beskyttelsen i en separat, gjennomgått release.

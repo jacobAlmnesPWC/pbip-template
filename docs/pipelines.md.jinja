@@ -1,0 +1,29 @@
+# Azure DevOps-pipelines
+
+Registrer disse tre filene i Azure DevOps:
+
+| Fil | Formål |
+|---|---|
+| `pipelines/ci.yml` | PR-validering: lint, enhetstester og config/PBIP-struktur |
+| `pipelines/deploy-dev.yml` | Automatisk full deploy til DEV ved merge til `main` |
+| `pipelines/promote.yml` | Manuell promotering av eksakt commit fra vellykket DEV-deploy til test eller prod |
+
+Opprett Azure DevOps Environments med navnene `{{ project_slug }}-dev`, `{{ project_slug }}-test` og `{{ project_slug }}-prod`. Ikke legg approvers på DEV; legg godkjenning og eventuelle checks på test/prod.
+
+## Identitet
+
+Ved `auth_mode=azure_cli` må `{{ service_connection_name }}` være en Azure Resource Manager service connection som kan hente Entra-token. Workload Identity Federation er anbefalt. Ved `client_secret` må pipeline ha tilgang til variable group `{{ secret_variable_group_name }}`; verdiene skal komme fra Azure Key Vault.
+
+Hvis prosjektet ble generert med monorepo-prefix, er path-filtrene og working directory allerede relativt til `{{ repository_path_prefix or 'repo-roten' }}`.
+
+## Deploy og refresh
+
+Deployene bruker full profil-deploy som standard. Selektiv deploy er tilgjengelig i `src/deploy.py` med en eksplisitt, verifisert git-baseline; ikke bruk `HEAD~1` som generell release-baseline.
+
+`config/profiles.yml` velger refresh per profil:
+
+- `none`: ingen refresh (default)
+- `trigger`: start refresh og logg request-id
+- `wait`: vent på terminal status og feil pipeline ved refresh-feil
+
+Bruk `wait` bare når releasekontrakten krever at data er oppdatert før deployen regnes som ferdig.

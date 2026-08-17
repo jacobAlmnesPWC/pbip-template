@@ -1,0 +1,40 @@
+# Manual promotion of the exact commit produced by a successful DEV deployment.
+trigger: none
+pr: none
+
+parameters:
+  - name: targetEnvironment
+    displayName: Target environment
+    type: string
+    default: test
+    values: [test, prod]
+
+resources:
+  pipelines:
+    - pipeline: devDeployment
+      # Change this only if the Azure DevOps pipeline is registered with another name.
+      source: deploy-dev
+      trigger: none
+{% if auth_mode == 'client_secret' %}
+variables:
+  - group: '{{ secret_variable_group_name }}'
+{% endif %}
+pool:
+  vmImage: '{{ agent_image }}'
+
+jobs:
+  - deployment: Promote
+    displayName: Promote pinned DEV commit
+    environment: '{{ project_slug }}-{% raw %}${{ parameters.targetEnvironment }}{% endraw %}'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
+              fetchDepth: 0
+            - script: git checkout $(resources.pipeline.devDeployment.sourceCommit)
+              displayName: Check out the pinned DEV source commit
+            - template: templates/deploy.yml
+              parameters:
+                env: {% raw %}${{ parameters.targetEnvironment }}{% endraw %}
+                gitCompareRef: ''

@@ -1,0 +1,184 @@
+trigger:
+  branches:
+    include:
+      - feature/*
+      - fix/*
+
+parameters:
+  - name: semantic_version
+    displayName: 'Semantic version (e.g. v3.2.0) — leave empty to skip tagging'
+    type: string
+    default: ''
+  - name: tag_message
+    displayName: 'Tag message'
+    type: string
+    default: 'Release'
+
+variables:
+  python_version: '3.12'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: CI
+    displayName: 'CI — Lint, validate and bootstrap test'
+    jobs:
+
+      - job: Lint
+        displayName: 'Ruff lint and format check'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(python_version)
+          - script: pip install uv
+            displayName: 'Install uv'
+          - script: uv sync --frozen
+            displayName: 'Install dependencies'
+          - script: uv run ruff check src/
+            displayName: 'Ruff lint'
+          - script: uv run ruff format --check src/
+            displayName: 'Ruff format check'
+
+      - job: ValidateFiles
+        displayName: 'Validate required template files exist'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(python_version)
+          - script: pip install uv
+            displayName: 'Install uv'
+          - script: uv sync --frozen
+            displayName: 'Install dependencies'
+          - script: |
+              set -e
+              FILES=(
+                "copier.yml"
+                "pyproject.toml"
+                "uv.lock"
+                "{{ _copier_conf.answers_file }}.jinja"
+                "config/config-{{ project_slug }}.yml.jinja"
+                "config/parameter-{{ project_slug }}.yml.jinja"
+                "config/profiles.yml.jinja"
+                "pipelines/ci.yml.jinja"
+                "pipelines/deploy-dev.yml.jinja"
+                "pipelines/promote.yml.jinja"
+                "pipelines/templates/deploy.yml.jinja"
+                "docs/setup.md.jinja"
+                "docs/development.md"
+                "docs/pipelines.md.jinja"
+              )
+              for FILE in "${FILES[@]}"; do
+                if [ ! -f "$FILE" ]; then
+                  echo "ERROR: Required file '$FILE' not found."
+                  exit 1
+                fi
+                echo "OK: $FILE"
+              done
+            displayName: 'Check required files exist'
+          - script: |
+              uv run python -c "import yaml; yaml.safe_load(open('copier.yml'))"
+              echo "copier.yml is valid YAML"
+              uv run python -c "import tomllib; tomllib.load(open('pyproject.toml', 'rb'))"
+              echo "pyproject.toml is valid TOML"
+            displayName: 'Validate file formats'
+
+      - job: BootstrapTest
+        displayName: 'Test template bootstrapping with copier'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(python_version)
+          - script: pip install uv copier
+            displayName: 'Install uv and copier'
+          - script: |
+              git config --global user.email "azure@pipeline.com"
+              git config --global user.name "Azure Pipeline"
+              git config --global init.defaultBranch main
+            displayName: 'Configure git identity for copier tasks'
+          - script: |
+              copier copy . /tmp/test-project \
+                --trust \
+                --defaults \
+                --vcs-ref HEAD \
+                --data project_slug='test-project' \
+                --data pbip_display_name='Test Project' \
+                --data service_connection_name='test-service-connection' \
+                --data auth_mode='azure_cli' \
+                --data secret_variable_group_name='unused' \
+                --data agent_image='ubuntu-latest' \
+                --data repository_path_prefix=''
+            displayName: 'Bootstrap test project from template'
+          - script: |
+              set -e
+              cd /tmp/test-project
+              echo "--- Generated project contents ---"
+              find . -not -path './.git/*' -not -path './.venv/*' | sort
+              echo ""
+              echo "--- Verifying key generated files ---"
+              EXPECTED=(
+                "pyproject.toml"
+                "config/config-test-project.yml"
+                "config/parameter-test-project.yml"
+                "config/profiles.yml"
+                "pipelines/ci.yml"
+                "pipelines/deploy-dev.yml"
+                "pipelines/promote.yml"
+                "pipelines/templates/deploy.yml"
+                "docs/setup.md"
+                "docs/development.md"
+                "docs/pipelines.md"
+              )
+              for FILE in "${EXPECTED[@]}"; do
+                if [ ! -f "$FILE" ]; then
+                  echo "ERROR: Expected generated file '$FILE' not found."
+                  exit 1
+                fi
+                echo "OK: $FILE"
+              done
+            displayName: 'Verify generated output'
+          - script: |
+              cd /tmp/test-project
+              uv run pytest
+            displayName: 'Run generated-project tests'
+
+  - stage: TagTemplate
+    displayName: 'Tag release (SemVer)'
+    dependsOn: CI
+    condition: and(succeeded('CI'), eq(variables['Build.SourceBranchName'], 'main'))
+    jobs:
+      - job: TagAndPush
+        displayName: 'Validate, tag and push'
+        steps:
+          - checkout: self
+            persistCredentials: true
+          - script: |
+              git config user.email "azure@pipeline.com"
+              git config user.name "Azure Pipeline"
+            displayName: 'Git config'
+          - script: |
+              git fetch --tags
+              latest_tag=$(git tag --list 'v*' --sort=-version:refname | head -n 1)
+              if [ -z "$latest_tag" ]; then
+                echo "Current version: (no tags found)"
+              else
+                echo "Current version: $latest_tag"
+              fi
+            displayName: 'Show current version tag'
+          - script: |
+              semantic_version="${{ parameters.semantic_version }}"
+              if [ -z "$semantic_version" ]; then
+                echo "No semantic_version provided — skipping tagging."
+                exit 0
+              fi
+              valid_pattern="^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
+              if [[ "$semantic_version" =~ $valid_pattern ]]; then
+                echo "Valid version: $semantic_version — tagging..."
+                git tag -a "$semantic_version" -m "${{ parameters.tag_message }}"
+                git push origin "$semantic_version"
+                echo "Tag $semantic_version pushed successfully."
+              else
+                echo "ERROR: '$semantic_version' is not a valid semver tag. Use format v<MAJOR>.<MINOR>.<PATCH>"
+                exit 1
+              fi
+            displayName: 'Validate semver, tag and push'

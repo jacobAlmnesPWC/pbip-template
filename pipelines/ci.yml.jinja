@@ -1,0 +1,31 @@
+# Pull-request validation. It never deploys Fabric items.
+trigger: none
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - '{{ repository_path_prefix ~ '/' if repository_path_prefix else '' }}workspace/**'
+      - '{{ repository_path_prefix ~ '/' if repository_path_prefix else '' }}config/**'
+      - '{{ repository_path_prefix ~ '/' if repository_path_prefix else '' }}src/**'
+      - '{{ repository_path_prefix ~ '/' if repository_path_prefix else '' }}tests/**'
+
+pool:
+  vmImage: '{{ agent_image }}'
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.12'
+  - script: pip install uv
+    displayName: Install uv
+  - script: uv sync --frozen
+    workingDirectory: '{{ repository_path_prefix or '.' }}'
+    displayName: Install locked dependencies
+  - script: uv run ruff check src tests && uv run ruff format --check src tests
+    workingDirectory: '{{ repository_path_prefix or '.' }}'
+    displayName: Lint and format check
+  - script: uv run pytest
+    workingDirectory: '{{ repository_path_prefix or '.' }}'
+    displayName: Unit tests

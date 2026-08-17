@@ -1,0 +1,7 @@
+expression Database = "DEV" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: aaa6fa37-e84d-40cf-8388-1777871e23ff
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Text
+

@@ -1,0 +1,32 @@
+# Merge to main is the only automatic remote deployment: it targets DEV.
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - '{{ repository_path_prefix ~ '/' if repository_path_prefix else '' }}workspace/**'
+      - '{{ repository_path_prefix ~ '/' if repository_path_prefix else '' }}config/**'
+
+pr: none
+{% if auth_mode == 'client_secret' %}
+variables:
+  - group: '{{ secret_variable_group_name }}'
+{% endif %}
+pool:
+  vmImage: '{{ agent_image }}'
+
+jobs:
+  - deployment: DeployDev
+    displayName: Deploy PBIP to DEV
+    environment: '{{ project_slug }}-dev'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
+              fetchDepth: 0
+            - template: templates/deploy.yml
+              parameters:
+                env: dev
+                gitCompareRef: ''

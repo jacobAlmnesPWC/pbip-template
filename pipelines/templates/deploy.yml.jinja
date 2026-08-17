@@ -1,0 +1,55 @@
+parameters:
+  - name: env
+    type: string
+  - name: gitCompareRef
+    type: string
+    default: ''
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.12'
+      addToPath: true
+  - script: pip install uv
+    displayName: Install uv
+  - script: uv sync --frozen
+    workingDirectory: '{{ repository_path_prefix or '.' }}'
+    displayName: Install locked dependencies
+  - script: git config --global core.quotepath false
+    displayName: Preserve readable Unicode paths in git diagnostics
+{% if auth_mode == 'azure_cli' %}
+  - task: AzureCLI@2
+    displayName: Deploy PBIP to {% raw %}${{ parameters.env }}{% endraw %}
+    inputs:
+      azureSubscription: '{{ service_connection_name }}'
+      scriptType: pscore
+      scriptLocation: inlineScript
+      workingDirectory: '{{ repository_path_prefix or '.' }}'
+      inlineScript: |
+        $arguments = @('-u', 'src/deploy.py', '--env', '{% raw %}${{ parameters.env }}{% endraw %}', '--auth-mode', 'azure_cli')
+        $compareRef = '{% raw %}${{ parameters.gitCompareRef }}{% endraw %}'.Trim()
+        if ($compareRef) { $arguments += @('--git-compare-ref', $compareRef) }
+        python @arguments
+  - task: AzureCLI@2
+    displayName: Evaluate refresh policy for {% raw %}${{ parameters.env }}{% endraw %}
+    inputs:
+      azureSubscription: '{{ service_connection_name }}'
+      scriptType: pscore
+      scriptLocation: inlineScript
+      workingDirectory: '{{ repository_path_prefix or '.' }}'
+      inlineScript: |
+        python -u src/refresh.py --env '{% raw %}${{ parameters.env }}{% endraw %}' --auth-mode azure_cli
+{% else %}
+  - script: |
+      python -u src/deploy.py --env '{% raw %}${{ parameters.env }}{% endraw %}' --auth-mode '{{ auth_mode }}'
+      python -u src/refresh.py --env '{% raw %}${{ parameters.env }}{% endraw %}' --auth-mode '{{ auth_mode }}'
+    workingDirectory: '{{ repository_path_prefix or '.' }}'
+    env:
+      FABRIC_CICD_AUTH_MODE: '{{ auth_mode }}'
+{% if auth_mode == 'client_secret' %}
+      AZURE_TENANT_ID: $(AZURE_TENANT_ID)
+      AZURE_CLIENT_ID: $(AZURE_CLIENT_ID)
+      AZURE_CLIENT_SECRET: $(AZURE_CLIENT_SECRET)
+{% endif %}
+    displayName: Deploy PBIP and evaluate refresh policy
+{% endif %}
